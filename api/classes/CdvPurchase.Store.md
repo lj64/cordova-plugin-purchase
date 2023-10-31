@@ -14,6 +14,7 @@ Entry class of the plugin.
 
 - [applicationUsername](CdvPurchase.Store.md#applicationusername)
 - [log](CdvPurchase.Store.md#log)
+- [minTimeBetweenUpdates](CdvPurchase.Store.md#mintimebetweenupdates)
 - [validator](CdvPurchase.Store.md#validator)
 - [validator\_privacy\_policy](CdvPurchase.Store.md#validator_privacy_policy)
 - [verbosity](CdvPurchase.Store.md#verbosity)
@@ -63,7 +64,7 @@ Entry class of the plugin.
 
 ### applicationUsername
 
-• `Optional` **applicationUsername**: `string` \| () => `string`
+• `Optional` **applicationUsername**: `string` \| () => `undefined` \| `string`
 
 Return the identifier of the user for your application
 
@@ -74,6 +75,14 @@ ___
 • **log**: [`Logger`](CdvPurchase.Logger.md)
 
 Logger
+
+___
+
+### minTimeBetweenUpdates
+
+• **minTimeBetweenUpdates**: `number` = `600000`
+
+Avoid invoking store.update() if the most recent call occurred within this specific number of milliseconds.
 
 ___
 
@@ -655,7 +664,7 @@ ___
 
 ### restorePurchases
 
-▸ **restorePurchases**(): `Promise`<`void`\>
+▸ **restorePurchases**(): `Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 Replay the users transactions.
 
@@ -663,7 +672,7 @@ This method exists to cover an Apple AppStore requirement.
 
 #### Returns
 
-`Promise`<`void`\>
+`Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 ___
 

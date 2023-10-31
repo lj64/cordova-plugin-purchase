@@ -25,6 +25,7 @@ Adapter for a payment or in-app purchase platform
 - [options](CdvPurchase.Braintree.Adapter.md#options)
 - [products](CdvPurchase.Braintree.Adapter.md#products)
 - [ready](CdvPurchase.Braintree.Adapter.md#ready)
+- [supportsParallelLoading](CdvPurchase.Braintree.Adapter.md#supportsparallelloading)
 
 ### Accessors
 
@@ -119,6 +120,8 @@ ___
 
 • **products**: [`Product`](CdvPurchase.Product.md)[] = `[]`
 
+List of products managed by the adapter.
+
 #### Implementation of
 
 [Adapter](../interfaces/CdvPurchase.Adapter.md).[products](../interfaces/CdvPurchase.Adapter.md#products)
@@ -137,6 +140,18 @@ The value is set by the "Adapters" class (which is responsible for initializing 
 
 [Adapter](../interfaces/CdvPurchase.Adapter.md).[ready](../interfaces/CdvPurchase.Adapter.md#ready)
 
+___
+
+### supportsParallelLoading
+
+• **supportsParallelLoading**: `boolean` = `false`
+
+Set to true if receipts and products can be loaded in parallel
+
+#### Implementation of
+
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[supportsParallelLoading](../interfaces/CdvPurchase.Adapter.md#supportsparallelloading)
+
 ## Accessors
 
 ### isSupported
@@ -151,7 +166,7 @@ Returns true is the adapter is supported on this device.
 
 #### Implementation of
 
-CdvPurchase.Adapter.isSupported
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[isSupported](../interfaces/CdvPurchase.Adapter.md#issupported)
 
 ___
 
@@ -167,7 +182,7 @@ List of purchase receipts.
 
 #### Implementation of
 
-CdvPurchase.Adapter.receipts
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[receipts](../interfaces/CdvPurchase.Adapter.md#receipts)
 
 ## Methods
 
@@ -398,7 +413,7 @@ ___
 
 ### restorePurchases
 
-▸ **restorePurchases**(): `Promise`<`void`\>
+▸ **restorePurchases**(): `Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 Replay the queue of transactions.
 
@@ -406,7 +421,7 @@ Might ask the user to login.
 
 #### Returns
 
-`Promise`<`void`\>
+`Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 #### Implementation of
 

@@ -1,8 +1,16 @@
+/// <reference path="types.ts" />
+/// <reference path="utils/compatibility.ts" />
+/// <reference path="utils/platform-name.ts" />
 /// <reference path="validator/validator.ts" />
 /// <reference path="log.ts" />
 /// <reference path="internal/adapters.ts" />
+/// <reference path="internal/adapter-listener.ts" />
 /// <reference path="internal/callbacks.ts" />
 /// <reference path="internal/ready.ts" />
+/// <reference path="internal/register.ts" />
+/// <reference path="internal/transaction-monitor.ts" />
+/// <reference path="internal/receipts-monitor.ts" />
+/// <reference path="internal/expiry-monitor.ts" />
 
 /**
  * Namespace for the cordova-plugin-purchase plugin.
@@ -24,7 +32,7 @@ namespace CdvPurchase {
     /**
      * Current release number of the plugin.
      */
-    export const PLUGIN_VERSION = '13.6.0';
+    export const PLUGIN_VERSION = '13.8.6';
 
     /**
      * Entry class of the plugin.
@@ -73,7 +81,7 @@ namespace CdvPurchase {
         public verbosity: LogLevel = LogLevel.ERROR;
 
         /** Return the identifier of the user for your application */
-        public applicationUsername?: string | (() => string);
+        public applicationUsername?: string | (() => string | undefined);
 
         /**
          * Get the application username as a string by either calling or returning {@link Store.applicationUsername}
@@ -171,6 +179,9 @@ namespace CdvPurchase {
         /** Monitor state changes for transactions */
         private transactionStateMonitors: Internal.TransactionStateMonitors;
 
+        /** Monitor subscription expiry */
+        private expiryMonitor: Internal.ExpiryMonitor;
+
         constructor() {
             const store = this;
             this.listener = new Internal.StoreAdapterListener({
@@ -202,6 +213,17 @@ namespace CdvPurchase {
                 receiptsVerified: () => { store.receiptsVerifiedCallbacks.trigger(); },
                 log: this.log,
             }).launch();
+            this.expiryMonitor = new Internal.ExpiryMonitor({
+                // get localReceipts() { return store.localReceipts; },
+                get verifiedReceipts() { return store.verifiedReceipts; },
+                // onTransactionExpired(transaction) {
+                // store.approvedCallbacks.trigger(transaction);
+                // },
+                onVerifiedPurchaseExpired(verifiedPurchase, receipt) {
+                    store.verify(receipt.sourceReceipt);
+                },
+            });
+            this.expiryMonitor.launch();
         }
 
         /**
@@ -223,7 +245,11 @@ namespace CdvPurchase {
          *   }]);
          */
         register(product: IRegisterProduct | IRegisterProduct[]) {
-            this.registeredProducts.add(product);
+            const errors = this.registeredProducts.add(product);
+            errors.forEach(error => {
+                store.errorCallbacks.trigger(error);
+                this.log.error(error);
+            });
         }
 
         private initializedHasBeenCalled = false;
@@ -240,6 +266,7 @@ namespace CdvPurchase {
             }
             this.log.info('initialize()');
             this.initializedHasBeenCalled = true;
+            this.lastUpdate = +new Date();
             const store = this;
             const ret = this.adapters.initialize(platforms, {
                 error: this.triggerError.bind(this),
@@ -270,11 +297,29 @@ namespace CdvPurchase {
             throw new Error("use store.initialize() or store.update()");
         }
 
+        /** Stores the last time the store was updated (or initialized), to skip calls in quick succession. */
+        private lastUpdate: number = 0;
+
+        /**
+         * Avoid invoking store.update() if the most recent call occurred within this specific number of milliseconds.
+         */
+        minTimeBetweenUpdates: number = 600000;
+
         /**
          * Call to refresh the price of products and status of purchases.
          */
         async update() {
             this.log.info('update()');
+            if (!this._readyCallbacks.isReady) {
+                this.log.warn('Do not call store.update() at startup! It is meant to reload the price of products (if needed) long after initialization.');
+                return;
+            }
+            const now = +new Date();
+            if (this.lastUpdate > now - this.minTimeBetweenUpdates) {
+                this.log.info('Skipping store.update() as the last call occurred less than store.minTimeBetweenUpdates millis ago.');
+                return;
+            }
+            this.lastUpdate = now;
             // Load products metadata
             for (const registration of this.registeredProducts.byPlatform()) {
                 const products = await this.adapters.findReady(registration.platform)?.loadProducts(registration.products);
@@ -451,7 +496,7 @@ namespace CdvPurchase {
         async order(offer: Offer, additionalData?: AdditionalData): Promise<IError | undefined> {
             this.log.info(`order(${offer.productId})`);
             const adapter = this.adapters.findReady(offer.platform);
-            if (!adapter) return storeError(ErrorCode.PAYMENT_NOT_ALLOWED, 'Adapter not found or not ready (' + offer.platform + ')');
+            if (!adapter) return storeError(ErrorCode.PAYMENT_NOT_ALLOWED, 'Adapter not found or not ready (' + offer.platform + ')', offer.platform, null);
             const ret = await adapter.order(offer, additionalData || {});
             if (ret && 'isError' in ret) store.triggerError(ret);
             return ret;
@@ -469,7 +514,7 @@ namespace CdvPurchase {
         requestPayment(paymentRequest: PaymentRequest, additionalData?: AdditionalData): PaymentRequestPromise {
             const adapter = this.adapters.findReady(paymentRequest.platform);
             if (!adapter)
-                return PaymentRequestPromise.failed(ErrorCode.PAYMENT_NOT_ALLOWED, 'Adapter not found or not ready (' + paymentRequest.platform + ')');
+                return PaymentRequestPromise.failed(ErrorCode.PAYMENT_NOT_ALLOWED, 'Adapter not found or not ready (' + paymentRequest.platform + ')', paymentRequest.platform, null);
 
             // fill-in missing total amount as the sum of all items.
             if (!paymentRequest.amountMicros) {
@@ -491,7 +536,7 @@ namespace CdvPurchase {
                 for (const item of paymentRequest.items) {
                     if (item?.pricing?.currency) {
                         if (paymentRequest.currency !== item.pricing.currency) {
-                            return PaymentRequestPromise.failed(ErrorCode.PAYMENT_INVALID, 'Currencies do not match');
+                            return PaymentRequestPromise.failed(ErrorCode.PAYMENT_INVALID, 'Currencies do not match', paymentRequest.platform, item.id);
                         }
                     }
                     else if (item?.pricing) {
@@ -576,10 +621,13 @@ namespace CdvPurchase {
          * This method exists to cover an Apple AppStore requirement.
          */
         async restorePurchases() {
+            let error: IError | undefined;
             for (const adapter of this.adapters.list) {
-                if (adapter.ready) await adapter.restorePurchases();
+                if (adapter.ready) {
+                    error = error ?? await adapter.restorePurchases();
+                }
             }
-            // store.triggerError(storeError(ErrorCode.UNKNOWN, 'restorePurchases() is not implemented yet'));
+            return error;
         }
 
         /**
@@ -594,7 +642,7 @@ namespace CdvPurchase {
         async manageSubscriptions(platform?: Platform): Promise<IError | undefined> {
             this.log.info('manageSubscriptions()');
             const adapter = this.adapters.findReady(platform);
-            if (!adapter) return storeError(ErrorCode.SETUP, "Found no adapter ready to handle 'manageSubscription'");
+            if (!adapter) return storeError(ErrorCode.SETUP, "Found no adapter ready to handle 'manageSubscription'", platform ?? null, null);
             return adapter.manageSubscriptions();
         }
 
@@ -612,7 +660,7 @@ namespace CdvPurchase {
         async manageBilling(platform?: Platform): Promise<IError | undefined> {
             this.log.info('manageBilling()');
             const adapter = this.adapters.findReady(platform);
-            if (!adapter) return storeError(ErrorCode.SETUP, "Found no adapter ready to handle 'manageBilling'");
+            if (!adapter) return storeError(ErrorCode.SETUP, "Found no adapter ready to handle 'manageBilling'", platform ?? null, null);
             return adapter.manageBilling();
         }
 
@@ -677,7 +725,13 @@ namespace CdvPurchase {
 }
 
 // Create the CdvPurchase.store object at startup.
-setTimeout(() => {
+if (window.cordova) {
+    setTimeout(initCDVPurchase, 0); // somehow with Cordova this needs to be delayed.
+}
+else {
+    initCDVPurchase();
+}
+function initCDVPurchase() {
     console.log('Create CdvPurchase...');
     /*
     if (window.CdvPurchase) {
@@ -696,7 +750,7 @@ setTimeout(() => {
     window.CdvPurchase.store = new CdvPurchase.Store();
     // Let's maximize backward compatibility
     Object.assign(window.CdvPurchase.store, CdvPurchase.LogLevel, CdvPurchase.ProductType, CdvPurchase.ErrorCode, CdvPurchase.Platform);
-}, 0);
+}
 
 // Ensure utility are included when compiling typescript.
 /// <reference path="utils/format-billing-cycle.ts" />

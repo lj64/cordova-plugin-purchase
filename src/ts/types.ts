@@ -18,6 +18,12 @@ namespace CdvPurchase {
 
         /** Human readable message, in plain english */
         message: string;
+
+        /** Optional platform the error occured on */
+        platform: Platform | null;
+
+        /** Optional ID of the product the error occurred on */
+        productId: string | null;
     }
 
     /** Types of In-App Products */
@@ -111,17 +117,17 @@ namespace CdvPurchase {
         /**
          * List of products managed by the adapter.
          */
-        get products(): Product[];
+        products: Product[];
 
         /**
          * List of purchase receipts.
          */
-        get receipts(): Receipt[];
+        receipts: Receipt[];
 
         /**
          * Returns true is the adapter is supported on this device.
          */
-        get isSupported(): boolean;
+        isSupported: boolean;
 
         /**
          * Initializes a platform adapter.
@@ -143,6 +149,11 @@ namespace CdvPurchase {
          * Load the receipts
          */
         loadReceipts(): Promise<Receipt[]>;
+
+        /**
+         * Set to true if receipts and products can be loaded in parallel
+         */
+        supportsParallelLoading: boolean;
 
         /**
          * Initializes an order.
@@ -192,7 +203,7 @@ namespace CdvPurchase {
          *
          * Might ask the user to login.
          */
-        restorePurchases(): Promise<void>;
+        restorePurchases(): Promise<IError | undefined>;
     }
 
 

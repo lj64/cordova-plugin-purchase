@@ -28,8 +28,10 @@ Adapter for Apple AppStore using StoreKit version 1
 - [log](CdvPurchase.AppleAppStore.Adapter.md#log)
 - [name](CdvPurchase.AppleAppStore.Adapter.md#name)
 - [needAppReceipt](CdvPurchase.AppleAppStore.Adapter.md#needappreceipt)
+- [onRestoreCompleted](CdvPurchase.AppleAppStore.Adapter.md#onrestorecompleted)
 - [pseudoReceipt](CdvPurchase.AppleAppStore.Adapter.md#pseudoreceipt)
 - [ready](CdvPurchase.AppleAppStore.Adapter.md#ready)
+- [supportsParallelLoading](CdvPurchase.AppleAppStore.Adapter.md#supportsparallelloading)
 
 ### Accessors
 
@@ -169,6 +171,28 @@ True when we need to validate the application receipt
 
 ___
 
+### onRestoreCompleted
+
+• `Optional` **onRestoreCompleted**: (`code`: `undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)) => `void`
+
+#### Type declaration
+
+▸ (`code`): `void`
+
+Callback called when the restore process is completed
+
+##### Parameters
+
+| Name | Type |
+| :------ | :------ |
+| `code` | `undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md) |
+
+##### Returns
+
+`void`
+
+___
+
 ### pseudoReceipt
 
 • **pseudoReceipt**: [`Receipt`](CdvPurchase.Receipt.md)
@@ -189,6 +213,18 @@ The value is set by the "Adapters" class (which is responsible for initializing 
 
 [Adapter](../interfaces/CdvPurchase.Adapter.md).[ready](../interfaces/CdvPurchase.Adapter.md#ready)
 
+___
+
+### supportsParallelLoading
+
+• **supportsParallelLoading**: `boolean` = `true`
+
+Set to true if receipts and products can be loaded in parallel
+
+#### Implementation of
+
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[supportsParallelLoading](../interfaces/CdvPurchase.Adapter.md#supportsparallelloading)
+
 ## Accessors
 
 ### isSupported
@@ -203,7 +239,7 @@ Returns true on iOS, the only platform supported by this adapter
 
 #### Implementation of
 
-CdvPurchase.Adapter.isSupported
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[isSupported](../interfaces/CdvPurchase.Adapter.md#issupported)
 
 ___
 
@@ -219,7 +255,7 @@ List of products managed by the adapter.
 
 #### Implementation of
 
-CdvPurchase.Adapter.products
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[products](../interfaces/CdvPurchase.Adapter.md#products)
 
 ___
 
@@ -235,7 +271,7 @@ List of purchase receipts.
 
 #### Implementation of
 
-CdvPurchase.Adapter.receipts
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[receipts](../interfaces/CdvPurchase.Adapter.md#receipts)
 
 ## Methods
 
@@ -526,7 +562,7 @@ ___
 
 ### restorePurchases
 
-▸ **restorePurchases**(): `Promise`<`void`\>
+▸ **restorePurchases**(): `Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 Replay the queue of transactions.
 
@@ -534,7 +570,7 @@ Might ask the user to login.
 
 #### Returns
 
-`Promise`<`void`\>
+`Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 #### Implementation of
 

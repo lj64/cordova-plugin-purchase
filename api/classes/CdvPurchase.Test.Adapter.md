@@ -29,6 +29,7 @@ Test.TEST_PRODUCTS
 - [products](CdvPurchase.Test.Adapter.md#products)
 - [ready](CdvPurchase.Test.Adapter.md#ready)
 - [receipts](CdvPurchase.Test.Adapter.md#receipts)
+- [supportsParallelLoading](CdvPurchase.Test.Adapter.md#supportsparallelloading)
 
 ### Accessors
 
@@ -92,6 +93,8 @@ ___
 
 • **products**: [`Product`](CdvPurchase.Product.md)[] = `[]`
 
+List of products managed by the adapter.
+
 #### Implementation of
 
 [Adapter](../interfaces/CdvPurchase.Adapter.md).[products](../interfaces/CdvPurchase.Adapter.md#products)
@@ -116,9 +119,23 @@ ___
 
 • **receipts**: [`Receipt`](CdvPurchase.Receipt.md)[] = `[]`
 
+List of purchase receipts.
+
 #### Implementation of
 
 [Adapter](../interfaces/CdvPurchase.Adapter.md).[receipts](../interfaces/CdvPurchase.Adapter.md#receipts)
+
+___
+
+### supportsParallelLoading
+
+• **supportsParallelLoading**: `boolean` = `true`
+
+Set to true if receipts and products can be loaded in parallel
+
+#### Implementation of
+
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[supportsParallelLoading](../interfaces/CdvPurchase.Adapter.md#supportsparallelloading)
 
 ## Accessors
 
@@ -134,7 +151,7 @@ Returns true is the adapter is supported on this device.
 
 #### Implementation of
 
-CdvPurchase.Adapter.isSupported
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[isSupported](../interfaces/CdvPurchase.Adapter.md#issupported)
 
 ## Methods
 
@@ -390,7 +407,7 @@ ___
 
 ### restorePurchases
 
-▸ **restorePurchases**(): `Promise`<`void`\>
+▸ **restorePurchases**(): `Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 Replay the queue of transactions.
 
@@ -398,7 +415,7 @@ Might ask the user to login.
 
 #### Returns
 
-`Promise`<`void`\>
+`Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 #### Implementation of
 

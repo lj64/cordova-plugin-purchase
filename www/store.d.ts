@@ -64,14 +64,20 @@ declare namespace CdvPurchase {
         /** Error: The signature in a payment discount is not valid. */
         INVALID_SIGNATURE,
         /** Error: Parameters are missing in a payment discount. */
-        MISSING_OFFER_PARAMS
+        MISSING_OFFER_PARAMS,
+        /**
+         * Server code used when a subscription expired.
+         *
+         * @deprecated Validator should now return the transaction in the collection as expired.
+         */
+        VALIDATOR_SUBSCRIPTION_EXPIRED = 6778003
     }
     /**
      * Create an {@link IError} instance
      *
      * @internal
      */
-    function storeError(code: ErrorCode, message: string): IError;
+    function storeError(code: ErrorCode, message: string, platform: Platform | null, productId: string | null): IError;
 }
 declare namespace CdvPurchase {
     interface IapticConfig {
@@ -299,6 +305,20 @@ declare namespace CdvPurchase {
     }
 }
 declare namespace CdvPurchase {
+    namespace Utils {
+        /** Object.values() for ES6 */
+        function objectValues<T>(obj: {
+            [key: string]: T;
+        }): T[];
+    }
+}
+declare namespace CdvPurchase {
+    namespace Utils {
+        /** Returns human format name for a given platform */
+        function platformName(platform: Platform): string;
+    }
+}
+declare namespace CdvPurchase {
     /**
      * @internal
      */
@@ -446,6 +466,69 @@ declare namespace CdvPurchase {
 }
 declare namespace CdvPurchase {
     namespace Internal {
+        interface StoreAdapterDelegate {
+            approvedCallbacks: Callbacks<Transaction>;
+            pendingCallbacks: Callbacks<Transaction>;
+            finishedCallbacks: Callbacks<Transaction>;
+            updatedCallbacks: Callbacks<Product>;
+            updatedReceiptCallbacks: Callbacks<Receipt>;
+            receiptsReadyCallbacks: Callbacks<void>;
+        }
+        /**
+         * Monitor the updates for products and receipt.
+         *
+         * Call the callbacks when appropriate.
+         */
+        class StoreAdapterListener implements AdapterListener {
+            delegate: StoreAdapterDelegate;
+            private log;
+            /** The list of supported platforms, needs to be set by "store.initialize" */
+            private supportedPlatforms;
+            constructor(delegate: StoreAdapterDelegate, log: Logger);
+            /** Those platforms have reported that their receipts are ready */
+            private platformWithReceiptsReady;
+            lastTransactionState: {
+                [transactionToken: string]: TransactionState;
+            };
+            static makeTransactionToken(transaction: Transaction): string;
+            /** Store the listener's latest calling time (in ms) for a given transaction at a given state */
+            lastCallTimeForState: {
+                [transactionTokenWithState: string]: number;
+            };
+            /**
+             * Set the list of supported platforms.
+             *
+             * Called by the store when it is initialized.
+             */
+            setSupportedPlatforms(platforms: Platform[]): void;
+            /**
+             * Trigger the "receiptsReady" event when all platforms have reported that their receipts are ready.
+             *
+             * This function is used by adapters to report that their receipts are ready.
+             * Once all adapters have reported their receipts, the "receiptsReady" event is triggered.
+             *
+             * @param platform The platform that has its receipts ready.
+             */
+            receiptsReady(platform: Platform): void;
+            /**
+             * Trigger the "updated" event for each product.
+             */
+            productsUpdated(platform: Platform, products: Product[]): void;
+            /**
+             * Triggers the "approved", "pending" and "finished" events for transactions.
+             *
+             * - "approved" is triggered only if it hasn't been called for the same transaction in the last 5 seconds.
+             * - "finished" and "pending" are triggered only if the transaction state has changed.
+             *
+             * @param platform The platform that has its receipts updated.
+             * @param receipts The receipts that have been updated.
+             */
+            receiptsUpdated(platform: Platform, receipts: Receipt[]): void;
+        }
+    }
+}
+declare namespace CdvPurchase {
+    namespace Internal {
         /**
          * Manage a list of callbacks
          */
@@ -500,6 +583,141 @@ declare namespace CdvPurchase {
         }
     }
 }
+declare namespace CdvPurchase {
+    /**
+     * Data provided to store.register()
+     */
+    interface IRegisterProduct {
+        /** Identifier of the product on the store */
+        id: string;
+        /**
+         * The payment platform the product is available on.
+         */
+        platform: Platform;
+        /** Product type, should be one of the defined product types */
+        type: ProductType;
+        /**
+         * Name of the group your subscription product is a member of.
+         *
+         * If you don't set anything, all subscription will be members of the same group.
+         */
+        group?: string;
+    }
+    namespace Internal {
+        class RegisteredProducts {
+            list: IRegisterProduct[];
+            find(platform: Platform, id: string): IRegisterProduct | undefined;
+            add(product: IRegisterProduct | IRegisterProduct[]): IError[];
+            byPlatform(): {
+                platform: Platform;
+                products: IRegisterProduct[];
+            }[];
+        }
+    }
+}
+declare namespace CdvPurchase {
+    /**
+     * Instance of a function monitoring changes to a given transaction.
+     *
+     * Can be stopped with `monitor.stop()`.
+     */
+    interface TransactionMonitor {
+        /** Stop monitoring the transaction. */
+        stop(): void;
+        /** Transaction being monitored. */
+        transaction: Transaction;
+    }
+    /** @internal */
+    namespace Internal {
+        /**
+         * Helper class to monitor changes in transaction states.
+         *
+         * @example
+         * const monitor = monitors.start(transaction, (state) => {
+         *   // ... transaction state has changed
+         * });
+         * monitor.stop();
+         */
+        class TransactionStateMonitors {
+            private monitors;
+            private findMonitors;
+            constructor(when: When);
+            private callOnChange;
+            /**
+             * Start monitoring the provided transaction for state changes.
+             */
+            start(transaction: Transaction, onChange: Callback<TransactionState>): TransactionMonitor;
+            stop(monitorId: string): void;
+        }
+    }
+}
+declare namespace CdvPurchase {
+    namespace Internal {
+        interface ReceiptsMonitorController {
+            when(): When;
+            hasLocalReceipts(): boolean;
+            receiptsVerified(): void;
+            hasValidator(): boolean;
+            numValidationRequests(): number;
+            numValidationResponses(): number;
+            off<T>(callback: Callback<T>): void;
+            log: Logger;
+        }
+        class ReceiptsMonitor {
+            controller: ReceiptsMonitorController;
+            log: Logger;
+            intervalChecker?: number;
+            constructor(controller: ReceiptsMonitorController);
+            private hasCalledReceiptsVerified;
+            callReceiptsVerified(): void;
+            launch(): void;
+        }
+    }
+}
+/**
+ * The platform doesn't send notifications when a subscription expires.
+ *
+ * However this is useful, so let's do just that.
+ */
+declare namespace CdvPurchase {
+    namespace Internal {
+        /** Data and callbacks to interface with the ExpiryMonitor */
+        interface ExpiryMonitorController {
+            verifiedReceipts: VerifiedReceipt[];
+            /** Called when a verified purchase expires */
+            onVerifiedPurchaseExpired(verifiedPurchase: VerifiedPurchase, receipt: VerifiedReceipt): void;
+        }
+        class ExpiryMonitor {
+            /** Time between checks for newly expired subscriptions */
+            static INTERVAL_MS: number;
+            /**
+             * Extra time until re-validating an expired subscription.
+             *
+             * The platform will take unspecified amount of time to report the renewal via their APIs.
+             * Values below have been selected via trial-and-error, might require tweaking.
+             */
+            static GRACE_PERIOD_MS: {
+                [platform: string]: number;
+            };
+            /** controller */
+            controller: ExpiryMonitorController;
+            /** reference to the function that runs at a given interval */
+            interval?: number;
+            /** Track active verified purchases */
+            activePurchases: {
+                [transactionId: string]: true;
+            };
+            /** Track notified verified purchases */
+            notifiedPurchases: {
+                [transactionId: string]: true;
+            };
+            /** Track active local transactions */
+            /** Track notified local transactions */
+            constructor(controller: ExpiryMonitorController);
+            launch(): void;
+        }
+    }
+}
 /**
  * Namespace for the cordova-plugin-purchase plugin.
  *
@@ -519,7 +737,7 @@ declare namespace CdvPurchase {
     /**
      * Current release number of the plugin.
      */
-    const PLUGIN_VERSION = "13.6.0";
+    const PLUGIN_VERSION = "13.8.6";
     /**
      * Entry class of the plugin.
      */
@@ -559,7 +777,7 @@ declare namespace CdvPurchase {
          */
         verbosity: LogLevel;
         /** Return the identifier of the user for your application */
-        applicationUsername?: string | (() => string);
+        applicationUsername?: string | (() => string | undefined);
         /**
          * Get the application username as a string by either calling or returning {@link Store.applicationUsername}
         */
@@ -634,6 +852,8 @@ declare namespace CdvPurchase {
         private _validator;
         /** Monitor state changes for transactions */
         private transactionStateMonitors;
+        /** Monitor subscription expiry */
+        private expiryMonitor;
         constructor();
         /**
          * Register a product.
@@ -665,6 +885,12 @@ declare namespace CdvPurchase {
          * @deprecated - use store.initialize(), store.update() or store.restorePurchases()
          */
         refresh(): void;
+        /** Stores the last time the store was updated (or initialized), to skip calls in quick succession. */
+        private lastUpdate;
+        /**
+         * Avoid invoking store.update() if the most recent call occurred within this specific number of milliseconds.
+         */
+        minTimeBetweenUpdates: number;
         /**
          * Call to refresh the price of products and status of purchases.
          */
@@ -793,7 +1019,7 @@ declare namespace CdvPurchase {
          *
          * This method exists to cover an Apple AppStore requirement.
          */
-        restorePurchases(): Promise<void>;
+        restorePurchases(): Promise<IError | undefined>;
         /**
          * Open the subscription management interface for the selected platform.
          *
@@ -856,6 +1082,7 @@ declare namespace CdvPurchase {
      */
     namespace Internal { }
 }
+declare function initCDVPurchase(): void;
 declare namespace CdvPurchase {
     /** Callback */
     type Callback<T> = (t: T) => void;
@@ -869,6 +1096,10 @@ declare namespace CdvPurchase {
         code: ErrorCode;
         /** Human readable message, in plain english */
         message: string;
+        /** Optional platform the error occured on */
+        platform: Platform | null;
+        /** Optional ID of the product the error occurred on */
+        productId: string | null;
     }
     /** Types of In-App Products */
     enum ProductType {
@@ -976,6 +1207,10 @@ declare namespace CdvPurchase {
          */
         loadReceipts(): Promise<Receipt[]>;
         /**
+         * Set to true if receipts and products can be loaded in parallel
+         */
+        supportsParallelLoading: boolean;
+        /**
          * Initializes an order.
          */
         order(offer: Offer, additionalData: AdditionalData): Promise<undefined | IError>;
@@ -1015,7 +1250,7 @@ declare namespace CdvPurchase {
          *
          * Might ask the user to login.
          */
-        restorePurchases(): Promise<void>;
+        restorePurchases(): Promise<IError | undefined>;
     }
     /**
      * Data to attach to a transaction.
@@ -1220,7 +1455,7 @@ declare namespace CdvPurchase {
          *
          * @internal
          */
-        static failed(code: ErrorCode, message: string): PaymentRequestPromise;
+        static failed(code: ErrorCode, message: string, platform: Platform | null, productId: string | null): PaymentRequestPromise;
         /**
          * Return a failed promise.
          *
@@ -1491,40 +1726,6 @@ declare namespace CdvPurchase {
 }
 declare namespace CdvPurchase {
     namespace Internal {
-        interface StoreAdapterDelegate {
-            approvedCallbacks: Callbacks<Transaction>;
-            pendingCallbacks: Callbacks<Transaction>;
-            finishedCallbacks: Callbacks<Transaction>;
-            updatedCallbacks: Callbacks<Product>;
-            updatedReceiptCallbacks: Callbacks<Receipt>;
-            receiptsReadyCallbacks: Callbacks<void>;
-        }
-        /**
-         * Monitor the updates for products and receipt.
-         *
-         * Call the callbacks when appropriate.
-         */
-        class StoreAdapterListener implements AdapterListener {
-            delegate: StoreAdapterDelegate;
-            private log;
-            /** The list of supported platforms, needs to be set by "store.initialize" */
-            private supportedPlatforms;
-            constructor(delegate: StoreAdapterDelegate, log: Logger);
-            /** Those platforms have reported that their receipts are ready */
-            private platformWithReceiptsReady;
-            lastTransactionState: {
-                [transactionToken: string]: TransactionState;
-            };
-            static makeTransactionToken(transaction: Transaction): string;
-            setSupportedPlatforms(platforms: Platform[]): void;
-            receiptsReady(platform: Platform): void;
-            productsUpdated(platform: Platform, products: Product[]): void;
-            receiptsUpdated(platform: Platform, receipts: Receipt[]): void;
-        }
-    }
-}
-declare namespace CdvPurchase {
-    namespace Internal {
         /** Analyze the list of local receipts. */
         class LocalReceipts {
             /**
@@ -1582,64 +1783,6 @@ declare namespace CdvPurchase {
 }
 declare namespace CdvPurchase {
     namespace Internal {
-        interface ReceiptsMonitorController {
-            when(): When;
-            hasLocalReceipts(): boolean;
-            receiptsVerified(): void;
-            hasValidator(): boolean;
-            numValidationRequests(): number;
-            numValidationResponses(): number;
-            off<T>(callback: Callback<T>): void;
-            log: Logger;
-        }
-        class ReceiptsMonitor {
-            controller: ReceiptsMonitorController;
-            log: Logger;
-            intervalChecker?: number;
-            constructor(controller: ReceiptsMonitorController);
-            private hasCalledReceiptsVerified;
-            callReceiptsVerified(): void;
-            launch(): void;
-        }
-    }
-}
-declare namespace CdvPurchase {
-    /**
-     * Data provided to store.register()
-     */
-    interface IRegisterProduct {
-        /** Identifier of the product on the store */
-        id: string;
-        /**
-         * List of payment platforms the product is available on
-         *
-         * If you do not specify anything, the product is assumed to be available only on the
-         * default payment platform. (Apple AppStore on iOS, Google Play on Android)
-         */
-        platform: Platform;
-        /** Product type, should be one of the defined product types */
-        type: ProductType;
-        /**
-         * Name of the group your subscription product is a member of (default to "default").
-         *
-         * If you don't set anything, all subscription will be members of the same group.
-         */
-        group?: string;
-    }
-    namespace Internal {
-        class RegisteredProducts {
-            list: IRegisterProduct[];
-            find(platform: Platform, id: string): IRegisterProduct | undefined;
-            add(product: IRegisterProduct | IRegisterProduct[]): void;
-            byPlatform(): {
-                platform: Platform;
-                products: IRegisterProduct[];
-            }[];
-        }
-    }
-}
-declare namespace CdvPurchase {
-    namespace Internal {
         /**
          * Retry failed requests
          *
@@ -1660,42 +1803,6 @@ declare namespace CdvPurchase {
             }[];
             constructor(minTimeout?: number, maxTimeout?: number);
             retry(fn: F): void;
-        }
-    }
-}
-declare namespace CdvPurchase {
-    /**
-     * Instance of a function monitoring changes to a given transaction.
-     *
-     * Can be stopped with `monitor.stop()`.
-     */
-    interface TransactionMonitor {
-        /** Stop monitoring the transaction. */
-        stop(): void;
-        /** Transaction being monitored. */
-        transaction: Transaction;
-    }
-    /** @internal */
-    namespace Internal {
-        /**
-         * Helper class to monitor changes in transaction states.
-         *
-         * @example
-         * const monitor = monitors.start(transaction, (state) => {
-         *   // ... transaction state has changed
-         * });
-         * monitor.stop();
-         */
-        class TransactionStateMonitors {
-            private monitors;
-            private findMonitors;
-            constructor(when: When);
-            private callOnChange;
-            /**
-             * Start monitoring the provided transaction for state changes.
-             */
-            start(transaction: Transaction, onChange: Callback<TransactionState>): TransactionMonitor;
-            stop(monitorId: string): void;
         }
     }
 }
@@ -2247,7 +2354,9 @@ declare namespace CdvPurchase {
          * @param requests List of discount offers to evaluate eligibility for
          * @param callback Get the response, a boolean for each request (matched by index).
          */
-        type DiscountEligibilityDeterminer = (applicationReceipt: ApplicationReceipt, requests: DiscountEligibilityRequest[], callback: (response: boolean[]) => void) => void;
+        type DiscountEligibilityDeterminer = ((applicationReceipt: ApplicationReceipt, requests: DiscountEligibilityRequest[], callback: (response: boolean[]) => void) => void) & {
+            cacheReceipt?: (receipt: VerifiedReceipt) => void;
+        };
         /**
          * Optional options for the AppleAppStore adapter
          */
@@ -2316,11 +2425,15 @@ declare namespace CdvPurchase {
             needAppReceipt: boolean;
             /** True to auto-finish all transactions */
             autoFinish: boolean;
+            /** Callback called when the restore process is completed */
+            onRestoreCompleted?: (code: IError | undefined) => void;
             constructor(context: CdvPurchase.Internal.AdapterContext, options: AdapterOptions);
             /** Returns true on iOS, the only platform supported by this adapter */
             get isSupported(): boolean;
             private upsertTransactionInProgress;
+            /** Remove a transaction from the pseudo receipt */
             private removeTransactionInProgress;
+            /** Insert or update a transaction in the pseudo receipt */
             private upsertTransaction;
             private removeTransaction;
             /** Debounced version of _receiptUpdated */
@@ -2331,6 +2444,7 @@ declare namespace CdvPurchase {
             private setPaymentMonitor;
             private callPaymentMonitor;
             initialize(): Promise<IError | undefined>;
+            supportsParallelLoading: boolean;
             loadReceipts(): Promise<Receipt[]>;
             private canMakePayments;
             /** True iff the appStoreReceipt is already being initialized */
@@ -2356,7 +2470,7 @@ declare namespace CdvPurchase {
             manageSubscriptions(): Promise<IError | undefined>;
             manageBilling(): Promise<IError | undefined>;
             checkSupport(functionality: PlatformFunctionality): boolean;
-            restorePurchases(): Promise<void>;
+            restorePurchases(): Promise<IError | undefined>;
             presentCodeRedemptionSheet(): Promise<void>;
         }
     }
@@ -2526,6 +2640,15 @@ declare namespace CdvPurchase {
                 /** List of transaction updates to process */
                 private pendingUpdates;
                 constructor();
+                /**
+                 * Initialize the AppStore bridge.
+                 *
+                 * This calls the native "setup" method from the "InAppPurchase" Objective-C class.
+                 *
+                 * @param options Options for the bridge
+                 * @param success Called when the bridge is ready
+                 * @param error Called when the bridge failed to initialize
+                 */
                 init(options: Partial<BridgeOptions>, success: () => void, error: (code: ErrorCode, message: string) => void): void;
                 processPendingTransactions(): void;
                 /**
@@ -3114,6 +3237,7 @@ declare namespace CdvPurchase {
             options: AdapterOptions;
             constructor(context: Internal.AdapterContext, options: AdapterOptions);
             get isSupported(): boolean;
+            supportsParallelLoading: boolean;
             /**
              * Initialize the Braintree Adapter.
              */
@@ -3136,8 +3260,9 @@ declare namespace CdvPurchase {
              */
             handleReceiptValidationResponse(receipt: Receipt, response: Validator.Response.Payload): Promise<void>;
             checkSupport(functionality: PlatformFunctionality): boolean;
-            restorePurchases(): Promise<void>;
+            restorePurchases(): Promise<IError | undefined>;
         }
+        function braintreeError(code: ErrorCode, message: string): IError;
     }
 }
 declare namespace CdvPurchase {
@@ -4031,6 +4156,7 @@ declare namespace CdvPurchase {
             name: string;
             /** Has the adapter been successfully initialized */
             ready: boolean;
+            supportsParallelLoading: boolean;
             /** List of products managed by the GooglePlay adapter */
             get products(): GProduct[];
             private _products;
@@ -4045,6 +4171,7 @@ declare namespace CdvPurchase {
             private context;
             private log;
             autoRefreshIntervalMillis: number;
+            static trimProductTitles: boolean;
             static _instance: Adapter;
             constructor(context: Internal.AdapterContext, autoRefreshIntervalMillis?: number);
             private initializationPromise?;
@@ -4091,7 +4218,7 @@ declare namespace CdvPurchase {
             manageSubscriptions(): Promise<IError | undefined>;
             manageBilling(): Promise<IError | undefined>;
             checkSupport(functionality: PlatformFunctionality): boolean;
-            restorePurchases(): Promise<void>;
+            restorePurchases(): Promise<IError | undefined>;
         }
     }
 }
@@ -4108,8 +4235,15 @@ declare namespace CdvPurchase {
                 offers: SubscriptionOffer[];
             }
             interface SubscriptionOffer {
+                /** Base plan id associated with the subscription product (since billing library v6). */
+                base_plan_id: string | null;
+                /** Offer id associated with the subscription product (since billing library v6). */
+                offer_id: string | null;
+                /** Token required to pass in launchBillingFlow to purchase the subscription product with these pricing phases. */
                 token: string;
+                /** Tags associated with this Subscription Offer. */
                 tags: string[];
+                /** Pricing phases for the subscription product. */
                 pricing_phases: PricingPhase[];
             }
             enum RecurrenceMode {
@@ -4306,6 +4440,7 @@ declare namespace CdvPurchase {
             /**  */
             addProduct(registeredProduct: IRegisterProduct, vp: Bridge.InAppProduct | Bridge.Subscription): GProduct;
             private onSubsV12Loaded;
+            private makeOfferId;
             private iabSubsOfferV12Loaded;
             private onInAppLoaded;
             private toPaymentMode;
@@ -4844,6 +4979,7 @@ declare namespace CdvPurchase {
             private log;
             constructor(context: Internal.AdapterContext);
             get isSupported(): boolean;
+            supportsParallelLoading: boolean;
             initialize(): Promise<IError | undefined>;
             loadReceipts(): Promise<Receipt[]>;
             loadProducts(products: IRegisterProduct[]): Promise<(Product | IError)[]>;
@@ -4884,7 +5020,7 @@ declare namespace CdvPurchase {
             private reportActiveSubscription;
             static verify(receipt: Receipt, callback: Callback<Internal.ReceiptResponse>): void;
             checkSupport(functionality: PlatformFunctionality): boolean;
-            restorePurchases(): Promise<void>;
+            restorePurchases(): Promise<IError | undefined>;
         }
     }
 }
@@ -4977,6 +5113,7 @@ declare namespace CdvPurchase {
             id: Platform;
             name: string;
             ready: boolean;
+            supportsParallelLoading: boolean;
             products: Product[];
             receipts: Receipt[];
             initialize(): Promise<IError | undefined>;
@@ -4991,7 +5128,7 @@ declare namespace CdvPurchase {
             manageSubscriptions(): Promise<IError | undefined>;
             manageBilling(): Promise<IError | undefined>;
             checkSupport(functionality: PlatformFunctionality): boolean;
-            restorePurchases(): Promise<void>;
+            restorePurchases(): Promise<IError | undefined>;
         }
     }
 }

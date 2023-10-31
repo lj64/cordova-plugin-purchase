@@ -23,7 +23,9 @@ Adapter for a payment or in-app purchase platform
 - [name](CdvPurchase.GooglePlay.Adapter.md#name)
 - [ready](CdvPurchase.GooglePlay.Adapter.md#ready)
 - [retry](CdvPurchase.GooglePlay.Adapter.md#retry)
+- [supportsParallelLoading](CdvPurchase.GooglePlay.Adapter.md#supportsparallelloading)
 - [\_instance](CdvPurchase.GooglePlay.Adapter.md#_instance)
+- [trimProductTitles](CdvPurchase.GooglePlay.Adapter.md#trimproducttitles)
 
 ### Accessors
 
@@ -134,9 +136,27 @@ Used to retry failed commands
 
 ___
 
+### supportsParallelLoading
+
+• **supportsParallelLoading**: `boolean` = `false`
+
+Set to true if receipts and products can be loaded in parallel
+
+#### Implementation of
+
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[supportsParallelLoading](../interfaces/CdvPurchase.Adapter.md#supportsparallelloading)
+
+___
+
 ### \_instance
 
 ▪ `Static` **\_instance**: [`Adapter`](CdvPurchase.GooglePlay.Adapter.md)
+
+___
+
+### trimProductTitles
+
+▪ `Static` **trimProductTitles**: `boolean` = `true`
 
 ## Accessors
 
@@ -152,7 +172,7 @@ Returns true on Android, the only platform supported by this adapter
 
 #### Implementation of
 
-CdvPurchase.Adapter.isSupported
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[isSupported](../interfaces/CdvPurchase.Adapter.md#issupported)
 
 ___
 
@@ -168,7 +188,7 @@ List of products managed by the GooglePlay adapter
 
 #### Implementation of
 
-CdvPurchase.Adapter.products
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[products](../interfaces/CdvPurchase.Adapter.md#products)
 
 ___
 
@@ -184,7 +204,7 @@ List of purchase receipts.
 
 #### Implementation of
 
-CdvPurchase.Adapter.receipts
+[Adapter](../interfaces/CdvPurchase.Adapter.md).[receipts](../interfaces/CdvPurchase.Adapter.md#receipts)
 
 ## Methods
 
@@ -546,7 +566,7 @@ ___
 
 ### restorePurchases
 
-▸ **restorePurchases**(): `Promise`<`void`\>
+▸ **restorePurchases**(): `Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 Replay the queue of transactions.
 
@@ -554,7 +574,7 @@ Might ask the user to login.
 
 #### Returns
 
-`Promise`<`void`\>
+`Promise`<`undefined` \| [`IError`](../interfaces/CdvPurchase.IError.md)\>
 
 #### Implementation of
 
